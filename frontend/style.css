@@ -21,6 +21,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#f5f8fd;border:1px sol
 .answer-image{display:block;max-width:100%;max-height:320px;border:1px solid #d3dce8;border-radius:8px;background:#fff;margin-top:8px}
 .review-list{padding-left:22px}.review-list li{margin:7px 0}
 .status{min-height:20px}
+.student-name{max-width:380px;margin:16px 0}
+.section-head .toolbar{margin:0}
 .tts-controls{align-items:center;padding:8px 0}.tts-controls label.inline{display:flex;align-items:center;gap:6px;margin:0;font-weight:500;font-size:14px}.tts-controls select{width:auto;min-width:110px;padding:7px 9px}#listenBtn{background:#6f42b1}
 
 /* Editable / write-on answer sheets */

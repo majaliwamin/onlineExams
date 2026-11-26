@@ -62,11 +62,12 @@
   "duration_minutes": 45,
   "questions": [
     { "type": "mcq", "text": "How often is antenatal care recommended?", "marks": 5,
-      "options": ["Once", "At least four visits", "Only if unwell", "Never"] },
+      "options": ["Once", "At least four visits", "Only if unwell", "Never"],
+      "answer": 1 },
     { "type": "text", "text": "Describe two danger signs in pregnancy.", "marks": 10 }
   ]
 }</pre>
-          <p class="muted">Question ids are assigned automatically. Marks, question types and options are validated on the server.</p>
+          <p class="muted">Question ids are assigned automatically. For MCQs, <code>answer</code> can be a 0-based index (<code>1</code> = option B), a letter (<code>"B"</code>) or the exact option text. It is hidden from students and used for automatic marking.</p>
         </details>
       </section>
 
@@ -76,7 +77,7 @@
       </section>
 
       <section class="card">
-        <div class="section-head"><h1>Submissions</h1><button class="secondary" id="loadSubmissions">Load submissions</button></div>
+        <div class="section-head"><h1>Submissions</h1><div class="toolbar"><button class="secondary" id="loadSubmissions">Load submissions</button><button class="secondary" id="downloadCsv">Download CSV</button></div></div>
         <label class="filter">Filter by examination <select id="examFilter"><option value="">All examinations</option></select></label>
         <div id="submissionList"></div>
       </section>

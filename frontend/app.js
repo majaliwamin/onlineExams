@@ -23,6 +23,22 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => (
 ));
 const clockText = seconds => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 
+const savedStudentName = localStorage.getItem('mnhStudentName') || '';
+const nameInput = el('studentName');
+if (nameInput) {
+  nameInput.value = savedStudentName;
+  if (savedStudentName) {
+    const userLabel = document.querySelector('header .user');
+    if (userLabel) userLabel.textContent = savedStudentName;
+  }
+  nameInput.addEventListener('input', () => {
+    const name = nameInput.value.trim();
+    if (name) localStorage.setItem('mnhStudentName', name);
+    const userLabel = document.querySelector('header .user');
+    if (userLabel) userLabel.textContent = name || 'Demo Student';
+  });
+}
+
 async function errorText(response) {
   try { const data = await response.json(); return data.detail || response.statusText; }
   catch { return response.statusText || 'Request failed'; }
@@ -115,6 +131,12 @@ async function startExam() {
   button.disabled = true;
   button.textContent = 'Starting…';
   try {
+    const enteredName = (nameInput && nameInput.value.trim()) || '';
+    const student = enteredName || 'Demo Student';
+    if (enteredName) localStorage.setItem('mnhStudentName', enteredName);
+    const userLabel = document.querySelector('header .user');
+    if (userLabel) userLabel.textContent = student;
+
     const examResponse = await fetch('/api/exam');
     if (!examResponse.ok) throw new Error(await errorText(examResponse));
     state.exam = await examResponse.json();
@@ -122,7 +144,7 @@ async function startExam() {
     const sessionResponse = await fetch('/api/session/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ student: 'Demo Student' })
+      body: JSON.stringify({ student })
     });
     if (!sessionResponse.ok) throw new Error(await errorText(sessionResponse));
     state.session = await sessionResponse.json();

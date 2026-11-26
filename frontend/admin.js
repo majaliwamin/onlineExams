@@ -213,13 +213,7 @@ el('refreshExams').onclick = () => loadExams().catch(error => setText('uploadSta
 
 el('loadSample').onclick = async () => {
   try {
-    const response = await fetch('/api/sample-exam');
-    if (!response.ok) {
-      let detail = `Request failed (${response.status})`;
-      try { detail = (await response.json()).detail || detail; } catch { /* keep default */ }
-      throw new Error(detail);
-    }
-    const sample = await response.json();
+    const sample = await jsonRequest('/api/sample-exam');
     el('examJson').value = JSON.stringify(sample, null, 2);
     el('examTitle').value = sample.title || '';
     el('examDuration').value = sample.duration_minutes || 30;
@@ -316,6 +310,25 @@ el('uploadForm').onsubmit = async event => {
 
 /* -------------------------------------------------------------- submissions */
 el('loadSubmissions').onclick = () => loadSubmissions().catch(error => setText('authStatus', error.message));
+el('downloadCsv').onclick = () => downloadResultsCsv().catch(error => setText('authStatus', error.message));
+
+async function downloadResultsCsv() {
+  const response = await request('/api/admin/submissions.csv');
+  if (!response.ok) {
+    let detail = `Download failed (${response.status})`;
+    try { detail = (await response.json()).detail || detail; } catch { /* keep default */ }
+    throw new Error(detail);
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'mnh-results.csv';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setText('authStatus', 'Results CSV downloaded.');
+}
 
 async function loadSubmissions() {
   submissions = await jsonRequest('/api/admin/submissions');
@@ -340,11 +353,16 @@ function answerLabel(key) {
   return sheetPage ? `Editable worksheet · page ${sheetPage[1]}` : `Question ${key}`;
 }
 
-function renderAnswers(answers) {
+function renderAnswers(answers, grade = null) {
   const entries = Object.entries(answers || {});
   if (!entries.length) return '<p class="muted">No answers saved.</p>';
+  const details = (grade && grade.details) || [];
   return entries.map(([key, value]) => {
     const label = answerLabel(key);
+    const detail = details.find(item => String(item.question_id) === String(key));
+    const mark = detail
+      ? ` <span class="badge ${detail.is_correct ? 'ok' : ''}">${detail.is_correct ? 'Correct' : 'Incorrect'} · ${detail.awarded_marks}/${detail.max_marks} marks${detail.is_correct ? '' : ` · key: ${esc(detail.correct)}`}</span>`
+      : '';
     let body;
     if (value && typeof value === 'object') {
       body = (value.text ? `<pre>${esc(value.text)}</pre>` : '') +
@@ -355,7 +373,7 @@ function renderAnswers(answers) {
     } else {
       body = `<pre>${esc(typeof value === 'string' ? value : JSON.stringify(value, null, 2))}</pre>`;
     }
-    return `<div class="answer-block"><strong>${esc(label)}</strong>${body}</div>`;
+    return `<div class="answer-block"><strong>${esc(label)}</strong>${mark}${body}</div>`;
   }).join('');
 }
 
@@ -364,10 +382,16 @@ function renderSubmissions() {
   const rows = submissions.filter(item => !selected || item.exam_id === selected);
   const list = el('submissionList');
   if (!rows.length) { list.innerHTML = '<p class="muted">No submissions found.</p>'; return; }
-  list.innerHTML = rows.map(item => `
+  list.innerHTML = rows.map(item => {
+    const grade = item.grade || {};
+    const score = grade.total
+      ? `<span class="badge">MCQ ${grade.correct}/${grade.total} · ${grade.marks}/${grade.max_marks} marks</span>`
+      : '';
+    return `
     <div class="card">
-      <div><strong>${esc(item.student)}</strong> ${item.submitted_at ? '<span class="badge ok">Submitted</span>' : '<span class="badge">In progress</span>'}</div>
+      <div><strong>${esc(item.student)}</strong> ${item.submitted_at ? '<span class="badge ok">Submitted</span>' : '<span class="badge">In progress</span>'} ${score}</div>
       <p class="muted">${esc(item.exam_title)} · Session ${esc(item.session_id)} · Started ${new Date(item.started_at * 1000).toLocaleString()}${item.submitted_at ? ` · Submitted ${new Date(item.submitted_at * 1000).toLocaleString()}` : ''}</p>
-      <details ${item.submitted_at ? '' : 'open'}><summary>Answers</summary>${renderAnswers(item.answers)}</details>
-    </div>`).join('');
+      <details ${item.submitted_at ? '' : 'open'}><summary>Answers</summary>${renderAnswers(item.answers, item.grade)}</details>
+    </div>`;
+  }).join('');
 }

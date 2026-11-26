@@ -39,7 +39,8 @@ A ready-to-upload example is also in [`examples/sample-exam.json`](examples/samp
       "type": "mcq",
       "text": "How often is antenatal care recommended?",
       "marks": 5,
-      "options": ["Once", "At least four visits", "Only if unwell", "Never"]
+      "options": ["Once", "At least four visits", "Only if unwell", "Never"],
+      "answer": 1
     },
     {
       "type": "text",
@@ -52,6 +53,7 @@ A ready-to-upload example is also in [`examples/sample-exam.json`](examples/samp
 
 - `type` must be `mcq` (requires 2–8 unique `options`) or `text`.
 - `marks` must be a positive integer. Question ids are assigned in order by the server.
+- For MCQs, `answer` is optional and may be a 0-based index (`1` = option B), a letter (`"B"`) or the exact option text. It is stored privately, never sent to students, and used for automatic marking.
 - Limits: 1–200 questions, 1–480 minutes, title up to 160 characters, question text up to 20,000 characters (~3,000 words).
 - The server validates everything; invalid uploads return a clear error message.
 - A built-in practice exam is seeded on first run so the student portal always works.
@@ -59,7 +61,7 @@ A ready-to-upload example is also in [`examples/sample-exam.json`](examples/samp
 ## API overview
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/sample-exam` | Bundled example exam for the one-click admin button |
+| `GET /api/sample-exam` | Bundled example exam for the one-click admin button (admin token required) |
 | `GET /api/exam` | Active exam (what the student receives) |
 | `GET /api/exam/answer-sheet.docx` | Editable Word worksheet for the active exam |
 | `GET /api/exam/attachment` | Attached question paper, if any |
@@ -70,11 +72,17 @@ A ready-to-upload example is also in [`examples/sample-exam.json`](examples/samp
 | `GET /api/admin/demo-access` | Reports whether one-tap demo sign-in is available |
 | `POST /api/admin/login` | Exchange the admin key for an 8-hour bearer token |
 | `GET/POST/PUT/DELETE /api/admin/exams...` | Upload, list, edit, activate and delete exams |
-| `GET /api/admin/submissions` | Review all sessions and answers |
+| `GET /api/admin/submissions` | Review all sessions, answers and MCQ scores |
+| `GET /api/admin/submissions.csv` | Download student/exam/submission summary and MCQ scores as CSV |
 
 Admin endpoints accept either `Authorization: Bearer <token>` or the legacy `X-Admin-Key` header.
 
 For development, opening `/admin` signs in automatically with `demo-admin-change-me` while that default key is active. There is also a **Use demo key** button if a session expires. If `MNH_ADMIN_KEY` is set, the button is hidden and the custom key must be typed (leading/trailing spaces are ignored).
+
+## Student names, MCQ marking and results export
+Students enter their name on the welcome screen before starting. The name is remembered in that browser and shown in the admin submission list; if left blank the session is recorded as `Demo Student`.
+
+MCQs with an `answer` key are marked automatically. Admin submissions show the score (`MCQ correct/total · marks/max`) and correct each MCQ answer block; text and handwritten answers still require human review. Click **Download CSV** in the Submissions panel to export session, student, exam, submitted time, status and MCQ scores.
 
 ## Read questions aloud (voice generator)
 Each question has a **🔊 Listen** button. It reads the question (and all MCQ options) using gTTS, with a language selector (English, Français, Kiswahili, Amharic, Hausa, العربية) and playback speed (0.75× / 1× / 1.25×). Choices are remembered in the browser.

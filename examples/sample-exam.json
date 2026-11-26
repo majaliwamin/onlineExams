@@ -6,7 +6,8 @@
       "type": "mcq",
       "text": "How often is antenatal care recommended for a low-risk pregnancy?",
       "marks": 5,
-      "options": ["Once, at delivery", "At least four visits", "Only if symptoms occur", "Weekly for all pregnancies"]
+      "options": ["Once, at delivery", "At least four visits", "Only if symptoms occur", "Weekly for all pregnancies"],
+      "answer": 1
     },
     {
       "type": "text",

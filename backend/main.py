@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import csv
 import hashlib
 import io
 import json
@@ -57,7 +58,7 @@ _tts_locks: dict[str, threading.Lock] = {}
 # Built-in fallback exam (also used to seed the database on first run).
 # ---------------------------------------------------------------------------
 BUILTIN_QUESTIONS: list[dict[str, Any]] = [
-    {"id": 1, "text": "What is the value of 2³ + 4²?", "type": "mcq", "options": ["12", "16", "20", "24"], "marks": 5},
+    {"id": 1, "text": "What is the value of 2³ + 4²?", "type": "mcq", "options": ["12", "16", "20", "24"], "marks": 5, "answer": 1},
     {"id": 2, "text": "Define epidemiology.", "type": "text", "marks": 10},
     {"id": 3, "text": "Describe two functions of the placenta.", "type": "text", "marks": 10},
     {"id": 4, "text": "Explain the difference between incidence and prevalence.", "type": "text", "marks": 10},
@@ -233,6 +234,37 @@ def login(payload: LoginPayload):
 # ---------------------------------------------------------------------------
 # Exam validation / serialisation
 # ---------------------------------------------------------------------------
+def normalise_answer(raw: Any, options: list[str], question_number: int) -> int:
+    """Accept a 0-based index, an A-H letter, or the exact correct option text."""
+    if isinstance(raw, bool):
+        raise HTTPException(400, f"Question {question_number} answer must identify an option")
+    if isinstance(raw, int):
+        index = raw
+    elif isinstance(raw, str):
+        value = raw.strip()
+        if not value:
+            raise HTTPException(400, f"Question {question_number} answer cannot be empty")
+        if len(value) == 1 and value.upper() in "ABCDEFGH":
+            index = ord(value.upper()) - ord("A")
+        elif value.isdigit():
+            index = int(value)
+        else:
+            matches = [i for i, option in enumerate(options) if option.casefold() == value.casefold()]
+            if len(matches) != 1:
+                raise HTTPException(400, f"Question {question_number} answer must match one option exactly")
+            index = matches[0]
+    else:
+        raise HTTPException(400, f"Question {question_number} answer must be an index, letter or option text")
+    if not 0 <= index < len(options):
+        raise HTTPException(400, f"Question {question_number} answer is outside the available options")
+    return index
+
+
+def student_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Never reveal the stored correct answer to a student."""
+    return [{key: value for key, value in question.items() if key != "answer"} for question in questions]
+
+
 def normalise_exam(payload: ExamPayload) -> dict[str, Any]:
     title = (payload.title or "").strip()
     if not title or len(title) > 160:
@@ -271,6 +303,8 @@ def normalise_exam(payload: ExamPayload) -> dict[str, Any]:
             if len(set(options)) != len(options):
                 raise HTTPException(400, f"Question {index} has duplicate options")
             item["options"] = options
+            if "answer" in question and question["answer"] is not None:
+                item["answer"] = normalise_answer(question["answer"], options, index)
         normalised.append(item)
 
     attachment: dict[str, Any] | None = None
@@ -323,7 +357,7 @@ def public_exam(row: sqlite3.Row | None) -> dict[str, Any]:
             "title": "MNH Practice Examination",
             "duration_minutes": 30,
             "total_marks": sum(q["marks"] for q in BUILTIN_QUESTIONS),
-            "questions": BUILTIN_QUESTIONS,
+            "questions": student_questions(BUILTIN_QUESTIONS),
             "has_attachment": False,
         }
     return {
@@ -331,7 +365,7 @@ def public_exam(row: sqlite3.Row | None) -> dict[str, Any]:
         "title": row["title"],
         "duration_minutes": row["duration_minutes"],
         "total_marks": row["total_marks"],
-        "questions": json.loads(row["questions"]),
+        "questions": student_questions(json.loads(row["questions"])),
         "has_attachment": bool(row["attachment_data"]),
         "attachment_url": "/api/exam/attachment" if row["attachment_data"] else None,
     }
@@ -472,7 +506,7 @@ def favicon():
     return Response(status_code=204)
 
 
-@app.get("/api/sample-exam")
+@app.get("/api/sample-exam", dependencies=[Depends(require_admin)])
 def sample_exam():
     """Return the bundled example exam so admins can load it with one click."""
     path = ROOT / "examples" / "sample-exam.json"
@@ -761,7 +795,16 @@ def get_admin_exam(exam_id: str):
         row = c.execute("SELECT * FROM exams WHERE id=?", (exam_id,)).fetchone()
         if row is None:
             raise HTTPException(404, "Examination not found")
-        data = public_exam(row)
+        # Admins need the private answer key when they edit an exam.
+        data = {
+            "id": row["id"],
+            "title": row["title"],
+            "duration_minutes": row["duration_minutes"],
+            "total_marks": row["total_marks"],
+            "questions": json.loads(row["questions"]),
+            "has_attachment": bool(row["attachment_data"]),
+            "attachment_url": "/api/admin/exams/" + row["id"] + "/attachment" if row["attachment_data"] else None,
+        }
         data.update(exam_summary(row))
         return data
 
@@ -846,6 +889,114 @@ def admin_exam_attachment(exam_id: str):
         )
 
 
+def known_answer_map() -> dict[tuple[str, tuple[str, ...]], int]:
+    """Answer keys for exams uploaded before MCQ marking was added."""
+    sources: list[dict[str, Any]] = list(BUILTIN_QUESTIONS)
+    sample_path = ROOT / "examples" / "sample-exam.json"
+    if sample_path.exists():
+        try:
+            sources.extend(json.loads(sample_path.read_text(encoding="utf-8")).get("questions", []))
+        except (ValueError, OSError):
+            pass
+    keys: dict[tuple[str, tuple[str, ...]], int] = {}
+    for question in sources:
+        answer = question.get("answer")
+        if answer is None:
+            continue
+        text = str(question.get("text", "")).strip().casefold()
+        options = tuple(str(option).strip().casefold() for option in question.get("options", []))
+        keys[(text, options)] = answer
+    return keys
+
+
+def grading_questions(c: sqlite3.Connection, exam_id: str) -> list[dict[str, Any]]:
+    """Load the private question key used to mark MCQs."""
+    row = c.execute("SELECT questions FROM exams WHERE id=?", (exam_id,)).fetchone()
+    if row is None:
+        return BUILTIN_QUESTIONS if exam_id == "builtin" else []
+    questions = json.loads(row["questions"] or "[]")
+    known = known_answer_map()
+    for question in questions:
+        if question.get("type") == "mcq" and question.get("answer") is None:
+            text = str(question.get("text", "")).strip().casefold()
+            options = tuple(str(option).strip().casefold() for option in question.get("options", []))
+            question["answer"] = known.get((text, options))
+    return questions
+
+
+def submitted_answer_text(value: Any) -> str:
+    if isinstance(value, dict):
+        return str(value.get("text") or "")
+    if isinstance(value, str) and not value.startswith("data:image/"):
+        return value
+    return ""
+
+
+def grade_submission(answers: dict[str, Any], questions: list[dict[str, Any]]) -> dict[str, Any]:
+    """Auto-mark MCQs only. Text and written answers still need human review."""
+    details: list[dict[str, Any]] = []
+    for question in questions:
+        if question.get("type") != "mcq" or question.get("answer") is None:
+            continue
+        options = question.get("options") or []
+        index = question["answer"]
+        if not isinstance(index, int) or not 0 <= index < len(options):
+            continue
+        correct = options[index]
+        given = submitted_answer_text(answers.get(str(question.get("id")), answers.get(question.get("id"))))
+        is_correct = given.strip().casefold() == correct.strip().casefold()
+        marks = question.get("marks", 0) if isinstance(question.get("marks", 0), int) else 0
+        details.append({
+            "question_id": question.get("id"),
+            "given": given,
+            "correct": correct,
+            "is_correct": is_correct,
+            "awarded_marks": marks if is_correct else 0,
+            "max_marks": marks,
+        })
+    awarded = sum(item["awarded_marks"] for item in details)
+    maximum = sum(item["max_marks"] for item in details)
+    return {
+        "correct": sum(1 for item in details if item["is_correct"]),
+        "total": len(details),
+        "marks": awarded,
+        "max_marks": maximum,
+        "details": details,
+    }
+
+
+@app.get("/api/admin/submissions.csv", dependencies=[Depends(require_admin)])
+def submissions_csv():
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Session ID", "Student", "Exam", "Started", "Submitted", "Status",
+        "MCQ correct", "MCQ questions", "MCQ marks", "MCQ max marks",
+    ])
+    with db() as c:
+        rows = c.execute("SELECT * FROM sessions ORDER BY started DESC").fetchall()
+        for r in rows:
+            answers = json.loads(r["answers"] or "{}")
+            grade = grade_submission(answers, grading_questions(c, r["exam_id"] or "builtin"))
+            writer.writerow([
+                r["id"],
+                r["student"],
+                r["exam_title"] or "MNH Practice Examination",
+                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(r["started"])),
+                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(r["submitted"])) if r["submitted"] else "",
+                "Submitted" if r["submitted"] else "In progress",
+                grade["correct"],
+                grade["total"],
+                grade["marks"],
+                grade["max_marks"],
+            ])
+    return Response(
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="mnh-results.csv"'},
+    )
+
+
 @app.get("/api/admin/submissions", dependencies=[Depends(require_admin)])
 def submissions():
     with db() as c:
@@ -860,6 +1011,10 @@ def submissions():
                 "expires_at": r["expires"],
                 "submitted_at": r["submitted"],
                 "answers": json.loads(r["answers"] or "{}"),
+                "grade": grade_submission(
+                    json.loads(r["answers"] or "{}"),
+                    grading_questions(c, r["exam_id"] or "builtin"),
+                ),
             }
             for r in rows
         ]
