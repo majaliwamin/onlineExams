@@ -1,0 +1,22 @@
+{
+  "title": "Antenatal Care Assessment",
+  "duration_minutes": 45,
+  "questions": [
+    {
+      "type": "mcq",
+      "text": "How often is antenatal care recommended for a low-risk pregnancy?",
+      "marks": 5,
+      "options": ["Once, at delivery", "At least four visits", "Only if symptoms occur", "Weekly for all pregnancies"]
+    },
+    {
+      "type": "text",
+      "text": "Describe two danger signs that require urgent referral during pregnancy.",
+      "marks": 10
+    },
+    {
+      "type": "text",
+      "text": "List four components of routine antenatal care.",
+      "marks": 10
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Exam Admin</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <header>
+    <strong>MNH Examination</strong>
+    <span>Admin review &amp; exam management</span>
+    <a class="header-link" href="/">Student portal</a>
+  </header>
+  <main>
+    <section class="card" id="authPanel">
+      <h1>Admin sign in</h1>
+      <p class="muted">Enter the demo admin key (default: <code>demo-admin-change-me</code>). Set <code>MNH_ADMIN_KEY</code> to change it.</p>
+      <div class="form-row">
+        <label for="adminKey">Admin key</label>
+        <input id="adminKey" type="password" autocomplete="current-password" placeholder="Demo admin key">
+        <div class="toolbar">
+          <button id="signIn">Sign in</button>
+          <button type="button" class="secondary" id="demoSignIn" hidden>Use demo key</button>
+        </div>
+      </div>
+      <p class="status" id="authStatus"></p>
+    </section>
+
+    <div id="workspace" hidden>
+      <section class="card">
+        <h1 id="uploadHeading">Upload an examination</h1>
+        <p class="muted">Use the sample exam or choose a JSON file, optionally with a PDF or image question paper. The active exam is what students receive.</p>
+        <form id="uploadForm">
+          <div class="form-grid">
+            <label>Title <input id="examTitle" maxlength="160" placeholder="e.g. Midwifery Final Examination"></label>
+            <label>Duration (minutes) <input id="examDuration" type="number" min="1" max="480" value="30"></label>
+          </div>
+          <div class="form-grid">
+            <div>
+              <label>Exam definition (.json)</label>
+              <div class="toolbar">
+                <button type="button" id="loadSample">Use sample exam</button>
+                <input id="examFile" type="file" accept=".json,application/json">
+              </div>
+              <p class="muted">Tap the button to fill a ready exam, or choose your own .json file.</p>
+              <input id="examJson" type="hidden">
+            </div>
+            <label>Optional question paper (.pdf, .png, .jpg) <input id="attachmentFile" type="file" accept=".pdf,image/png,image/jpeg"></label>
+          </div>
+          <label class="checkbox"><input id="activate" type="checkbox" checked> Make this the active examination for students</label>
+          <div class="toolbar">
+            <button type="submit" id="uploadButton">Upload examination</button>
+            <button type="button" class="secondary" id="cancelEdit" hidden>Cancel edit</button>
+          </div>
+          <p class="status" id="uploadStatus"></p>
+        </form>
+        <details>
+          <summary>Expected JSON format</summary>
+          <pre>{
+  "title": "Antenatal Care Assessment",
+  "duration_minutes": 45,
+  "questions": [
+    { "type": "mcq", "text": "How often is antenatal care recommended?", "marks": 5,
+      "options": ["Once", "At least four visits", "Only if unwell", "Never"] },
+    { "type": "text", "text": "Describe two danger signs in pregnancy.", "marks": 10 }
+  ]
+}</pre>
+          <p class="muted">Question ids are assigned automatically. Marks, question types and options are validated on the server.</p>
+        </details>
+      </section>
+
+      <section class="card">
+        <div class="section-head"><h1>Examinations</h1><button class="secondary" id="refreshExams">Refresh</button></div>
+        <div id="examList"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-head"><h1>Submissions</h1><button class="secondary" id="loadSubmissions">Load submissions</button></div>
+        <label class="filter">Filter by examination <select id="examFilter"><option value="">All examinations</option></select></label>
+        <div id="submissionList"></div>
+      </section>
+    </div>
+  </main>
+  <script src="/assets/admin.js"></script>
+</body>
+</html>
